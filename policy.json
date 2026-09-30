@@ -1,0 +1,23 @@
+{
+  "contact": "Questions: security@example.com",
+  "log_content": false,
+  "deny_paths": [
+    { "name": "env-file", "pattern": "(^|[/\\s'\"=])\\.env(\\.[\\w.-]+)?($|[\\s'\"])" },
+    { "name": "ssh-keys", "pattern": "(^|[/\\s~])\\.ssh/" },
+    { "name": "cloud-credentials", "pattern": "(^|[/\\s~])\\.(aws|kube|gnupg|azure)/|gcloud/(credentials|application_default)" },
+    { "name": "claude-credentials", "pattern": "\\.claude/\\.credentials\\.json" },
+    { "name": "key-material", "pattern": "\\.(pem|key|p12|pfx|keystore)($|[\\s'\"])" }
+  ],
+  "deny_commands": [
+    { "name": "upload", "pattern": "\\bcurl\\b.*(\\s-[a-zA-Z]*[dFT]\\b|--data|--form|--upload-file)|\\bwget\\b.*--post" },
+    { "name": "remote-copy", "pattern": "\\b(scp|sftp|rsync|nc|ncat)\\b.*\\S+[@:]\\S+" },
+    { "name": "env-dump", "pattern": "(^|[;&|]\\s*)(printenv|env)\\s*($|[|>])" }
+  ],
+  "secrets": [
+    { "name": "aws-access-key", "pattern": "\\b(AKIA|ASIA)[0-9A-Z]{16}\\b" },
+    { "name": "private-key", "pattern": "-----BEGIN [A-Z ]*PRIVATE KEY-----" },
+    { "name": "github-token", "pattern": "\\bgh[pousr]_[A-Za-z0-9]{36,}\\b" },
+    { "name": "anthropic-key", "pattern": "\\bsk-ant-[A-Za-z0-9_-]{40,}\\b" },
+    { "name": "slack-token", "pattern": "\\bxox[baprs]-[A-Za-z0-9-]{20,}\\b" }
+  ]
+}

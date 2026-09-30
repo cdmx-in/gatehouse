@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+/* Colors by role. The dark values are their own steps, not a flip. */
+:root {
+  color-scheme: light dark;
+  --page: #f6f6f3;
+  --surface: #fcfcfb;
+  --sunken: #f0efec;
+  --ink: #0b0b0b;
+  --ink2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --line: rgba(11, 11, 11, 0.1);
+  --s1: #2a78d6; /* requests, allowed */
+  --s2: #eb6834; /* blocked */
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --sunken: #242423;
+    --ink: #ffffff;
+    --ink2: #c3c2b7;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --line: rgba(255, 255, 255, 0.1);
+    --s1: #3987e5;
+    --s2: #d95926;
+  }
+}
+@theme inline {
+  --font-sans: 'Geist Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace;
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-ink: var(--ink);
+  --color-ink2: var(--ink2);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-s1: var(--s1);
+  --color-s2: var(--s2);
+}
+body {
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+:focus-visible {
+  outline: 2px solid var(--s1);
+  outline-offset: 2px;
+}
+/* Sign-in backdrop: a faint dot grid that fades out toward the edges. */
+.backdrop {
+  background-image: radial-gradient(var(--axis) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: radial-gradient(ellipse at center, black 0%, transparent 70%);
+}

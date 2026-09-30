@@ -1,0 +1,6 @@
+gate
+gate.db*
+web/node_modules
+web/dist
+.env
+gate.log
