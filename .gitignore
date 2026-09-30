@@ -1,6 +1,6 @@
-gate
-gate.db*
+gatehouse
+gatehouse.db*
 web/node_modules
 web/dist
 .env
-gate.log
+gatehouse.log

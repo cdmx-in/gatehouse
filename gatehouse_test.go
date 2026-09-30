@@ -13,7 +13,7 @@ import (
 // A fake key, split so this file does not trip the very rule it tests.
 const fakeAWSKey = "AKIA" + "IOSFODNN7EXAMPLE"
 
-func TestGate(t *testing.T) {
+func TestGatehouse(t *testing.T) {
 	var upstreamHits int
 	var gotAuth string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -32,16 +32,16 @@ func TestGate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := newServer(filepath.Join(t.TempDir(), "gate.db"), policy, "admin", "pw", upstream.URL)
+	s, err := newServer(filepath.Join(t.TempDir(), "gatehouse.db"), policy, "admin", "pw", upstream.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	gate := httptest.NewServer(s.routes())
-	defer gate.Close()
+	srv := httptest.NewServer(s.routes())
+	defer srv.Close()
 
 	var session *http.Cookie
 	do := func(method, path, body string, admin bool) (int, string) {
-		req, _ := http.NewRequest(method, gate.URL+path, strings.NewReader(body))
+		req, _ := http.NewRequest(method, srv.URL+path, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer users-own-claude-login")
 		if admin && session != nil {

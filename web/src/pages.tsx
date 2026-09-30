@@ -210,7 +210,7 @@ export function Members() {
     }
   }
   async function remove(m: Member) {
-    if (!confirm(`Remove ${m.name}? Their Claude Code will stop working through Gate.`)) return
+    if (!confirm(`Remove ${m.name}? Their Claude Code will stop working through Gatehouse.`)) return
     await api(`/api/members/${m.id}`, { method: 'DELETE' })
     setVersion((v) => v + 1)
   }
@@ -221,7 +221,7 @@ export function Members() {
     <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
       <Card title="Connect a team member">
         <p className="mb-4 text-sm text-ink2">
-          Each person keeps signing in to Claude Code with their own Claude account. Gate gives them a personal address to send it through.
+          Each person keeps signing in to Claude Code with their own Claude account. Gatehouse gives them a personal address to send it through.
         </p>
         <form onSubmit={add} className="flex gap-2">
           <input className={`${input} min-w-0 flex-1`} placeholder="name@company.com" value={name} onChange={(e) => setName(e.target.value)} required maxLength={100} aria-label="Member name or email" />

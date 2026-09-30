@@ -1,4 +1,4 @@
-// gate is a pass-through proxy for Claude Code: it forwards each user's own
+// gatehouse is a pass-through proxy for Claude Code: it forwards each user's own
 // Claude login to Anthropic, enforces policy on what is sent, and keeps the audit trail.
 package main
 
@@ -160,24 +160,24 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 	s.sessions[id] = now.Add(sessionTTL)
 	s.mu.Unlock()
 	// SameSite=Strict keeps other sites from riding the session.
-	http.SetCookie(w, &http.Cookie{Name: "gate_session", Value: id, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode,
+	http.SetCookie(w, &http.Cookie{Name: "gatehouse_session", Value: id, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode,
 		Secure: r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https", MaxAge: int(sessionTTL.Seconds())})
 	writeJSON(w, map[string]string{"user": s.adminUser})
 }
 
 func (s *server) logout(w http.ResponseWriter, r *http.Request) {
-	if c, err := r.Cookie("gate_session"); err == nil {
+	if c, err := r.Cookie("gatehouse_session"); err == nil {
 		s.mu.Lock()
 		delete(s.sessions, c.Value)
 		s.mu.Unlock()
 	}
-	http.SetCookie(w, &http.Cookie{Name: "gate_session", Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: "gatehouse_session", Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: -1})
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *server) requireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c, err := r.Cookie("gate_session")
+		c, err := r.Cookie("gatehouse_session")
 		if err == nil {
 			s.mu.Lock()
 			exp, ok := s.sessions[c.Value]
@@ -404,26 +404,26 @@ func (s *server) prune(days int) {
 }
 
 func main() {
-	pass := os.Getenv("GATE_ADMIN_PASSWORD")
+	pass := os.Getenv("GATEHOUSE_ADMIN_PASSWORD")
 	if pass == "" {
-		log.Fatal("GATE_ADMIN_PASSWORD is required")
+		log.Fatal("GATEHOUSE_ADMIN_PASSWORD is required")
 	}
-	policy, err := loadPolicy(env("GATE_POLICY", "policy.json"))
+	policy, err := loadPolicy(env("GATEHOUSE_POLICY", "policy.json"))
 	if err != nil {
 		log.Fatal(err)
 	}
-	s, err := newServer(env("GATE_DB", "gate.db"), policy, env("GATE_ADMIN_USER", "admin"), pass, env("GATE_UPSTREAM", "https://api.anthropic.com"))
+	s, err := newServer(env("GATEHOUSE_DB", "gatehouse.db"), policy, env("GATEHOUSE_ADMIN_USER", "admin"), pass, env("GATEHOUSE_UPSTREAM", "https://api.anthropic.com"))
 	if err != nil {
 		log.Fatal(err)
 	}
-	days, err := strconv.Atoi(env("GATE_RETENTION_DAYS", "365"))
+	days, err := strconv.Atoi(env("GATEHOUSE_RETENTION_DAYS", "365"))
 	if err != nil || days < 1 {
-		log.Fatal("GATE_RETENTION_DAYS must be a positive number")
+		log.Fatal("GATEHOUSE_RETENTION_DAYS must be a positive number")
 	}
 	go s.prune(days)
 
-	addr := env("GATE_ADDR", "127.0.0.1:8787")
-	log.Printf("gate listening on http://%s", addr)
+	addr := env("GATEHOUSE_ADDR", "127.0.0.1:8787")
+	log.Printf("gatehouse listening on http://%s", addr)
 	// No write timeout: model responses stream for minutes.
 	srv := &http.Server{Addr: addr, Handler: s.routes(), ReadHeaderTimeout: 10 * time.Second}
 	log.Fatal(srv.ListenAndServe())

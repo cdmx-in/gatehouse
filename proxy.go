@@ -122,12 +122,12 @@ func usage(body []byte) (in, out int64) {
 func (s *server) proxy(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.memberByToken(r.PathValue("token"))
 	if !ok {
-		apiError(w, http.StatusUnauthorized, "authentication_error", "gate: unknown or revoked member token in ANTHROPIC_BASE_URL")
+		apiError(w, http.StatusUnauthorized, "authentication_error", "gatehouse: unknown or revoked member token in ANTHROPIC_BASE_URL")
 		return
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBody))
 	if err != nil {
-		apiError(w, http.StatusRequestEntityTooLarge, "invalid_request_error", "gate: request body too large")
+		apiError(w, http.StatusRequestEntityTooLarge, "invalid_request_error", "gatehouse: request body too large")
 		return
 	}
 	r.URL.Path, r.URL.RawPath = "/"+r.PathValue("rest"), ""

@@ -6,7 +6,7 @@ import { btnPrimary, Icon, input, Mark, Notice, type IconName } from './ui'
 const PAGES = [
   { id: 'overview', label: 'Overview', blurb: 'Claude Code activity across the team', ranged: true },
   { id: 'events', label: 'Events', blurb: 'Every prompt, tool call and blocked request', ranged: true },
-  { id: 'members', label: 'Members', blurb: 'People whose Claude Code runs through Gate', ranged: false },
+  { id: 'members', label: 'Members', blurb: 'People whose Claude Code runs through Gatehouse', ranged: false },
   { id: 'policy', label: 'Policy', blurb: 'Rules enforced on every request', ranged: false },
 ] as const satisfies readonly { id: IconName; label: string; blurb: string; ranged: boolean }[]
 type PageId = (typeof PAGES)[number]['id']
@@ -32,7 +32,7 @@ function SignIn({ onDone }: { onDone: (user: string) => void }) {
       <div className="backdrop absolute inset-0" aria-hidden />
       <form onSubmit={submit} className="relative w-full max-w-sm rounded-2xl border border-line bg-surface p-8 shadow-xl shadow-black/5">
         <Mark className="size-10" />
-        <h1 className="mt-5 text-xl font-semibold tracking-tight">Sign in to Gate</h1>
+        <h1 className="mt-5 text-xl font-semibold tracking-tight">Sign in to Gatehouse</h1>
         <p className="mt-1 text-sm text-ink2">Policy and audit for your team's Claude Code.</p>
         <label className="mt-6 block text-sm font-medium" htmlFor="user">Username</label>
         <input id="user" name="user" className={`${input} mt-1.5 w-full`} autoComplete="username" autoFocus required />
@@ -70,7 +70,7 @@ export default function App() {
       <aside className="flex items-center gap-1 overflow-x-auto border-b border-line bg-surface px-3 py-2 md:sticky md:top-0 md:h-screen md:w-56 md:shrink-0 md:flex-col md:items-stretch md:border-b-0 md:border-r md:py-4">
         <div className="flex items-center gap-2.5 px-2 md:mb-5">
           <Mark />
-          <span className="hidden text-[15px] font-semibold tracking-tight md:block">Gate</span>
+          <span className="hidden text-[15px] font-semibold tracking-tight md:block">Gatehouse</span>
         </div>
         <nav className="flex gap-1 md:flex-col">
           {PAGES.map((p) => (

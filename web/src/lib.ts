@@ -30,7 +30,7 @@ export function ago(ts: number) {
   return m < 1 ? 'Just now' : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.floor(m / 60)}h ago` : `${Math.floor(m / 1440)}d ago`
 }
 
-export const SIGNED_OUT = 'gate:signed-out'
+export const SIGNED_OUT = 'gatehouse:signed-out'
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(path, init)

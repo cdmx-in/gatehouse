@@ -1,10 +1,10 @@
-# gate
+# Gatehouse
 
 A self-hosted policy and audit proxy for Claude Code.
 
-Each person keeps using Claude Code signed in with their own Claude account. gate sits between Claude Code and Anthropic, blocks requests that break your policy, and records who did what. Nothing is installed on laptops: a person connects by setting one URL.
+Each person keeps using Claude Code signed in with their own Claude account. Gatehouse sits between Claude Code and Anthropic, blocks requests that break your policy, and records who did what. Nothing is installed on laptops: a person connects by setting one URL.
 
-![Gate dashboard](docs/screenshot.png)
+![Gatehouse dashboard](docs/screenshot.png)
 
 ## What it does
 
@@ -20,9 +20,9 @@ It is one Go binary with the React dashboard built in.
 You need Go 1.22 or newer (it fetches the toolchain it needs) and Node 22.
 
 ```sh
-git clone https://github.com/cdmx-in/gate && cd gate
+git clone https://github.com/cdmx-in/gatehouse && cd gatehouse
 make
-GATE_ADMIN_PASSWORD=choose-a-password ./gate
+GATEHOUSE_ADMIN_PASSWORD=choose-a-password ./gatehouse
 ```
 
 Open http://127.0.0.1:8787 and sign in as `admin`.
@@ -33,7 +33,7 @@ In the dashboard, go to **Members → Add member**. It shows a snippet once:
 
 ```json
 {
-  "env": { "ANTHROPIC_BASE_URL": "https://your-gate-host/m/gt_..." },
+  "env": { "ANTHROPIC_BASE_URL": "https://your-gatehouse-host/m/gt_..." },
   "skipWebFetchPreflight": true
 }
 ```
@@ -57,18 +57,18 @@ A blocked conversation stays blocked until the person runs `/rewind` or `/clear`
 
 | Variable | Default | |
 |---|---|---|
-| `GATE_ADMIN_PASSWORD` | required | dashboard password |
-| `GATE_ADMIN_USER` | `admin` | dashboard username |
-| `GATE_ADDR` | `127.0.0.1:8787` | listen address; put TLS in front of it |
-| `GATE_DB` | `gate.db` | SQLite audit store |
-| `GATE_POLICY` | `policy.json` | rules, read at startup |
-| `GATE_RETENTION_DAYS` | `365` | audit rows older than this are deleted |
-| `GATE_UPSTREAM` | `https://api.anthropic.com` | |
+| `GATEHOUSE_ADMIN_PASSWORD` | required | dashboard password |
+| `GATEHOUSE_ADMIN_USER` | `admin` | dashboard username |
+| `GATEHOUSE_ADDR` | `127.0.0.1:8787` | listen address; put TLS in front of it |
+| `GATEHOUSE_DB` | `gatehouse.db` | SQLite audit store |
+| `GATEHOUSE_POLICY` | `policy.json` | rules, read at startup |
+| `GATEHOUSE_RETENTION_DAYS` | `365` | audit rows older than this are deleted |
+| `GATEHOUSE_UPSTREAM` | `https://api.anthropic.com` | |
 
 ## Before you rely on it
 
-- **It is only a control if it is the only route.** Block `api.anthropic.com` on your network for everything except the gate server, and keep `claude.ai` and `platform.claude.com` open for sign-in.
-- **It stops data leaving, not commands running.** gate sees a tool call when its result is sent to the model, so the command has already run on the laptop.
+- **It is only a control if it is the only route.** Block `api.anthropic.com` on your network for everything except the Gatehouse server, and keep `claude.ai` and `platform.claude.com` open for sign-in.
+- **It stops data leaving, not commands running.** Gatehouse sees a tool call when its result is sent to the model, so the command has already run on the laptop.
 - **The member URL is the identity.** Anyone holding it can send as that person.
 - **The audit store is sensitive.** It holds file paths and commands, and full prompt text if you set `log_content`.
 - **Check Anthropic's terms for your plan.** Anthropic restricts routing Claude subscription credentials through other services. See [Authentication and credential use](https://code.claude.com/docs/en/legal-and-compliance) and confirm your setup with Anthropic.
@@ -78,7 +78,7 @@ A blocked conversation stays blocked until the person runs `/rewind` or `/clear`
 
 ```sh
 make test                 # go vet and the end-to-end test against a fake upstream
-cd web && npm run dev     # dashboard with hot reload, proxying to a gate on :8787
+cd web && npm run dev     # dashboard with hot reload, proxying to a local Gatehouse on :8787
 ```
 
 ## License
