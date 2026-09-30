@@ -17,10 +17,23 @@ It is one Go binary with the React dashboard built in.
 
 ## Quick start
 
-You need Go 1.22 or newer (it fetches the toolchain it needs) and Node 22.
+### Docker
 
 ```sh
 git clone https://github.com/cdmx-in/gatehouse && cd gatehouse
+cp .env.example .env        # set GATEHOUSE_ADMIN_PASSWORD
+docker compose up -d --build
+```
+
+Open http://127.0.0.1:8787 and sign in as `admin`. The audit database lives in the `data` volume, and `policy.json` is mounted from the checkout: edit it, then `docker compose restart`.
+
+The port is published on loopback only. Put TLS in front of it (Cloudflare Tunnel, nginx, Caddy), or set `GATEHOUSE_BIND=0.0.0.0:8787` in `.env` if something else on the host terminates TLS.
+
+### From source
+
+You need Go 1.22 or newer (it fetches the toolchain it needs) and Node 22.
+
+```sh
 make
 GATEHOUSE_ADMIN_PASSWORD=choose-a-password ./gatehouse
 ```

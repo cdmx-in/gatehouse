@@ -1,0 +1,8 @@
+.git
+.env
+docs
+gatehouse
+*.db*
+*.log
+web/node_modules
+web/dist
