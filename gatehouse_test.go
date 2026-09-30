@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -32,7 +33,7 @@ func TestGatehouse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := newServer(filepath.Join(t.TempDir(), "gatehouse.db"), policy, "admin", "pw", upstream.URL)
+	s, err := newServer(policy, config{DB: filepath.Join(t.TempDir(), "gatehouse.db"), Upstream: upstream.URL, AdminUser: "admin", AdminPass: "pw", PasswordLogin: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,5 +119,103 @@ func TestGatehouse(t *testing.T) {
 	}
 	if _, body = do("GET", "/api/events", "", true); strings.Contains(body, "users-own-claude-login") || strings.Contains(body, fakeAWSKey) {
 		t.Fatal("audit log leaked a credential or secret")
+	}
+}
+
+func TestGoogleSignIn(t *testing.T) {
+	account := "asha@example.com"
+	google := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			if r.FormValue("code") != "good-code" || r.FormValue("client_secret") != "secret" {
+				http.Error(w, "bad code", http.StatusBadRequest)
+				return
+			}
+			io.WriteString(w, `{"access_token":"at"}`)
+		case "/userinfo":
+			fmt.Fprintf(w, `{"email":%q,"email_verified":true}`, account)
+		}
+	}))
+	defer google.Close()
+
+	policy, _ := loadPolicy("policy.json")
+	cfg := config{DB: filepath.Join(t.TempDir(), "gatehouse.db"), Upstream: "http://unused.invalid", PasswordLogin: false,
+		Google: googleConfig{ClientID: "id", ClientSecret: "secret", Allowed: []string{"example.com", "boss@other.test"},
+			authURL: google.URL + "/auth", tokenURL: google.URL + "/token", userURL: google.URL + "/userinfo"}}
+	if _, err := newServer(policy, config{DB: cfg.DB, PasswordLogin: false}); err == nil {
+		t.Fatal("a config with no sign-in method was accepted")
+	}
+	s, err := newServer(policy, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(s.routes())
+	defer srv.Close()
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	get := func(path string, cookies ...*http.Cookie) *http.Response {
+		req, _ := http.NewRequest("GET", srv.URL+path, nil)
+		for _, c := range cookies {
+			req.AddCookie(c)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp
+	}
+	cookie := func(resp *http.Response, name string) *http.Cookie {
+		for _, c := range resp.Cookies() {
+			if c.Name == name && c.Value != "" {
+				return c
+			}
+		}
+		return nil
+	}
+
+	resp, err := http.Post(srv.URL+"/api/login", "application/json", strings.NewReader(`{"user":"admin","password":""}`))
+	if err != nil || resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("password sign-in while disabled = %v, want 403", resp.StatusCode)
+	}
+
+	// signIn runs the whole redirect dance and returns where the callback sent the browser, plus any session.
+	signIn := func(code string, forgeState bool) (string, *http.Cookie) {
+		start := get("/auth/google")
+		state, loc := cookie(start, stateCookie), start.Header.Get("Location")
+		if start.StatusCode != http.StatusFound || state == nil || !strings.HasPrefix(loc, google.URL+"/auth?") || !strings.Contains(loc, "state="+state.Value) {
+			t.Fatalf("start = %d %q", start.StatusCode, loc)
+		}
+		sent := state.Value
+		if forgeState {
+			sent = "forged"
+		}
+		cb := get("/auth/google/callback?code="+code+"&state="+sent, state)
+		return cb.Header.Get("Location"), cookie(cb, sessionCookie)
+	}
+
+	if loc, sess := signIn("good-code", true); loc != "/?error=failed" || sess != nil {
+		t.Fatalf("forged state: %q, session %v", loc, sess)
+	}
+	if loc, sess := signIn("stolen-code", false); loc != "/?error=failed" || sess != nil {
+		t.Fatalf("bad code: %q, session %v", loc, sess)
+	}
+	account = "eve@evil.test"
+	if loc, sess := signIn("good-code", false); loc != "/?error=denied" || sess != nil {
+		t.Fatalf("account outside the allow list: %q, session %v", loc, sess)
+	}
+	for _, ok := range []string{"asha@example.com", "Boss@Other.test"} {
+		account = ok
+		loc, sess := signIn("good-code", false)
+		if loc != "/" || sess == nil {
+			t.Fatalf("%s: %q, session %v", ok, loc, sess)
+		}
+		req, _ := http.NewRequest("GET", srv.URL+"/api/session", nil)
+		req.AddCookie(sess)
+		resp, _ := client.Do(req)
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if !strings.Contains(string(body), ok) {
+			t.Fatalf("session for %s says %s", ok, body)
+		}
 	}
 }

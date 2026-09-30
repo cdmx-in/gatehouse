@@ -6,10 +6,8 @@ services:
     ports:
       # Loopback by default: put TLS (Cloudflare Tunnel, nginx, Caddy) in front rather than exposing this port.
       - "${GATEHOUSE_BIND:-127.0.0.1:8787}:8787"
-    environment:
-      GATEHOUSE_ADMIN_PASSWORD: ${GATEHOUSE_ADMIN_PASSWORD:?set GATEHOUSE_ADMIN_PASSWORD in .env}
-      GATEHOUSE_ADMIN_USER: ${GATEHOUSE_ADMIN_USER:-admin}
-      GATEHOUSE_RETENTION_DAYS: ${GATEHOUSE_RETENTION_DAYS:-365}
+    # Every GATEHOUSE_* setting comes from .env; see .env.example.
+    env_file: .env
     volumes:
       - data:/data
       - ./policy.json:/etc/gatehouse/policy.json:ro

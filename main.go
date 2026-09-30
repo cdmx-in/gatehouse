@@ -3,8 +3,8 @@
 package main
 
 import (
+	"cmp"
 	"crypto/sha256"
-	"crypto/subtle"
 	"database/sql"
 	"embed"
 	"encoding/hex"
@@ -51,18 +51,23 @@ type Event struct {
 	TokensOut int64  `json:"tokens_out"`
 }
 
-type server struct {
-	db                   *sql.DB
-	policy               *Policy
-	adminUser, adminPass string
-	rp                   *httputil.ReverseProxy
-
-	mu       sync.Mutex
-	sessions map[string]time.Time // dashboard session id -> expiry
-	fails    []time.Time          // recent failed sign-ins
+type config struct {
+	DB, Upstream         string
+	AdminUser, AdminPass string
+	PasswordLogin        bool
+	Google               googleConfig
 }
 
-const sessionTTL = 12 * time.Hour
+type server struct {
+	db     *sql.DB
+	policy *Policy
+	cfg    config
+	rp     *httputil.ReverseProxy
+
+	mu       sync.Mutex
+	sessions map[string]session // dashboard session id -> who and until when
+	fails    []time.Time        // recent failed password sign-ins
+}
 
 func env(key, def string) string {
 	if v := os.Getenv(key); v != "" {
@@ -71,26 +76,35 @@ func env(key, def string) string {
 	return def
 }
 
-func newServer(dbPath string, policy *Policy, adminUser, adminPass, upstream string) (*server, error) {
-	u, err := url.Parse(upstream)
+func newServer(policy *Policy, cfg config) (*server, error) {
+	if err := cfg.validate(); err != nil {
+		return nil, err
+	}
+	g := &cfg.Google
+	g.authURL = cmp.Or(g.authURL, "https://accounts.google.com/o/oauth2/v2/auth")
+	g.tokenURL = cmp.Or(g.tokenURL, "https://oauth2.googleapis.com/token")
+	g.userURL = cmp.Or(g.userURL, "https://openidconnect.googleapis.com/v1/userinfo")
+	u, err := url.Parse(cfg.Upstream)
 	if err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", "file:"+dbPath+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
+	db, err := sql.Open("sqlite", "file:"+cfg.DB+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return nil, err
 	}
 	if _, err := db.Exec(schema); err != nil {
 		return nil, err
 	}
-	s := &server{db: db, policy: policy, adminUser: adminUser, adminPass: adminPass, sessions: map[string]time.Time{}}
+	s := &server{db: db, policy: policy, cfg: cfg, sessions: map[string]session{}}
 	s.rp = newProxy(u, s.responded)
 	return s, nil
 }
 
 func (s *server) routes() http.Handler {
 	admin := http.NewServeMux()
-	admin.HandleFunc("GET /api/session", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, map[string]string{"user": s.adminUser}) })
+	admin.HandleFunc("GET /api/session", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{"user": r.Context().Value(userKey{})})
+	})
 	admin.HandleFunc("GET /api/stats", s.stats)
 	admin.HandleFunc("GET /api/events", s.events)
 	admin.HandleFunc("GET /api/members", s.listMembers)
@@ -100,95 +114,18 @@ func (s *server) routes() http.Handler {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/m/{token}/{rest...}", s.proxy)
+	mux.HandleFunc("GET /api/auth", s.authMethods)
 	mux.HandleFunc("POST /api/login", s.login)
 	mux.HandleFunc("POST /api/logout", s.logout)
+	if s.cfg.Google.enabled() {
+		mux.HandleFunc("GET /auth/google", s.googleStart)
+		mux.HandleFunc("GET /auth/google/callback", s.googleCallback)
+	}
 	mux.Handle("/api/", s.requireAdmin(admin))
 	// The UI itself holds no data, so it is served without a session and shows the sign-in form.
 	dist, _ := fs.Sub(webFS, "web/dist")
 	mux.Handle("/", http.FileServerFS(dist))
 	return mux
-}
-
-func isJSON(r *http.Request) bool {
-	return strings.HasPrefix(r.Header.Get("Content-Type"), "application/json")
-}
-
-// ponytail: one admin account from the environment, and one global failure
-// counter (ten bad sign-ins lock the form for everyone for a minute). Move to
-// per-admin accounts and per-IP limits, or Cloudflare Access, when more than a
-// couple of people administer this.
-func (s *server) login(w http.ResponseWriter, r *http.Request) {
-	if !isJSON(r) {
-		http.Error(w, "content-type must be application/json", http.StatusUnsupportedMediaType)
-		return
-	}
-	var in struct {
-		User     string `json:"user"`
-		Password string `json:"password"`
-	}
-	json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in)
-	now := time.Now()
-
-	s.mu.Lock()
-	recent := s.fails[:0]
-	for _, t := range s.fails {
-		if now.Sub(t) < time.Minute {
-			recent = append(recent, t)
-		}
-	}
-	s.fails = recent
-	locked := len(s.fails) >= 10
-	s.mu.Unlock()
-	if locked {
-		http.Error(w, "Too many failed sign-ins. Try again in a minute.", http.StatusTooManyRequests)
-		return
-	}
-	if subtle.ConstantTimeCompare([]byte(in.User), []byte(s.adminUser))&subtle.ConstantTimeCompare([]byte(in.Password), []byte(s.adminPass)) != 1 {
-		s.mu.Lock()
-		s.fails = append(s.fails, now)
-		s.mu.Unlock()
-		http.Error(w, "Wrong username or password.", http.StatusUnauthorized)
-		return
-	}
-	id := randID() + randID()
-	s.mu.Lock()
-	for k, exp := range s.sessions {
-		if now.After(exp) {
-			delete(s.sessions, k)
-		}
-	}
-	s.sessions[id] = now.Add(sessionTTL)
-	s.mu.Unlock()
-	// SameSite=Strict keeps other sites from riding the session.
-	http.SetCookie(w, &http.Cookie{Name: "gatehouse_session", Value: id, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode,
-		Secure: r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https", MaxAge: int(sessionTTL.Seconds())})
-	writeJSON(w, map[string]string{"user": s.adminUser})
-}
-
-func (s *server) logout(w http.ResponseWriter, r *http.Request) {
-	if c, err := r.Cookie("gatehouse_session"); err == nil {
-		s.mu.Lock()
-		delete(s.sessions, c.Value)
-		s.mu.Unlock()
-	}
-	http.SetCookie(w, &http.Cookie{Name: "gatehouse_session", Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: -1})
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (s *server) requireAdmin(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c, err := r.Cookie("gatehouse_session")
-		if err == nil {
-			s.mu.Lock()
-			exp, ok := s.sessions[c.Value]
-			s.mu.Unlock()
-			if ok && time.Now().Before(exp) {
-				next.ServeHTTP(w, r)
-				return
-			}
-		}
-		http.Error(w, "sign in required", http.StatusUnauthorized)
-	})
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
@@ -404,15 +341,32 @@ func (s *server) prune(days int) {
 }
 
 func main() {
-	pass := os.Getenv("GATEHOUSE_ADMIN_PASSWORD")
-	if pass == "" {
-		log.Fatal("GATEHOUSE_ADMIN_PASSWORD is required")
+	passwordLogin, err := strconv.ParseBool(env("GATEHOUSE_PASSWORD_LOGIN", "true"))
+	if err != nil {
+		log.Fatal("GATEHOUSE_PASSWORD_LOGIN must be true or false")
+	}
+	cfg := config{
+		DB:            env("GATEHOUSE_DB", "gatehouse.db"),
+		Upstream:      env("GATEHOUSE_UPSTREAM", "https://api.anthropic.com"),
+		AdminUser:     env("GATEHOUSE_ADMIN_USER", "admin"),
+		AdminPass:     os.Getenv("GATEHOUSE_ADMIN_PASSWORD"),
+		PasswordLogin: passwordLogin,
+		Google: googleConfig{
+			ClientID:     os.Getenv("GATEHOUSE_GOOGLE_CLIENT_ID"),
+			ClientSecret: os.Getenv("GATEHOUSE_GOOGLE_CLIENT_SECRET"),
+			PublicURL:    strings.TrimRight(os.Getenv("GATEHOUSE_PUBLIC_URL"), "/"),
+		},
+	}
+	for _, a := range strings.Split(os.Getenv("GATEHOUSE_GOOGLE_ALLOWED"), ",") {
+		if a = strings.ToLower(strings.TrimSpace(a)); a != "" {
+			cfg.Google.Allowed = append(cfg.Google.Allowed, a)
+		}
 	}
 	policy, err := loadPolicy(env("GATEHOUSE_POLICY", "policy.json"))
 	if err != nil {
 		log.Fatal(err)
 	}
-	s, err := newServer(env("GATEHOUSE_DB", "gatehouse.db"), policy, env("GATEHOUSE_ADMIN_USER", "admin"), pass, env("GATEHOUSE_UPSTREAM", "https://api.anthropic.com"))
+	s, err := newServer(policy, cfg)
 	if err != nil {
 		log.Fatal(err)
 	}

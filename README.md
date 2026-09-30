@@ -53,6 +53,19 @@ In the dashboard, go to **Members → Add member**. It shows a snippet once:
 
 The person adds it to `~/.claude/settings.json` and keeps using Claude Code as before. Removing the member revokes the URL.
 
+## Dashboard sign-in
+
+Two methods, either or both:
+
+- **Password.** One account, `GATEHOUSE_ADMIN_USER` and `GATEHOUSE_ADMIN_PASSWORD`. On by default; set `GATEHOUSE_PASSWORD_LOGIN=false` to turn it off.
+- **Google.** Each admin signs in with their own Google account.
+  1. In Google Cloud Console, create an OAuth client of type "Web application".
+  2. Add `https://your-gatehouse-host/auth/google/callback` as an authorized redirect URI.
+  3. Set `GATEHOUSE_GOOGLE_CLIENT_ID`, `GATEHOUSE_GOOGLE_CLIENT_SECRET` and `GATEHOUSE_PUBLIC_URL=https://your-gatehouse-host`.
+  4. Set `GATEHOUSE_GOOGLE_ALLOWED` to the email addresses and domains that may sign in, for example `yourcompany.com,someone@gmail.com`. There is no default: without it Gatehouse refuses to start.
+
+Gatehouse will not start with no sign-in method enabled.
+
 ## Policy
 
 Rules live in `policy.json` and are regular expressions:
@@ -70,8 +83,12 @@ A blocked conversation stays blocked until the person runs `/rewind` or `/clear`
 
 | Variable | Default | |
 |---|---|---|
-| `GATEHOUSE_ADMIN_PASSWORD` | required | dashboard password |
+| `GATEHOUSE_ADMIN_PASSWORD` | required for password sign-in | dashboard password |
 | `GATEHOUSE_ADMIN_USER` | `admin` | dashboard username |
+| `GATEHOUSE_PASSWORD_LOGIN` | `true` | `false` turns password sign-in off |
+| `GATEHOUSE_GOOGLE_CLIENT_ID`, `GATEHOUSE_GOOGLE_CLIENT_SECRET` | | enable Google sign-in |
+| `GATEHOUSE_GOOGLE_ALLOWED` | | emails and domains allowed to sign in with Google |
+| `GATEHOUSE_PUBLIC_URL` | taken from the request | external base URL, used for the Google redirect |
 | `GATEHOUSE_ADDR` | `127.0.0.1:8787` | listen address; put TLS in front of it |
 | `GATEHOUSE_DB` | `gatehouse.db` | SQLite audit store |
 | `GATEHOUSE_POLICY` | `policy.json` | rules, read at startup |
@@ -85,7 +102,7 @@ A blocked conversation stays blocked until the person runs `/rewind` or `/clear`
 - **The member URL is the identity.** Anyone holding it can send as that person.
 - **The audit store is sensitive.** It holds file paths and commands, and full prompt text if you set `log_content`.
 - **Check Anthropic's terms for your plan.** Anthropic restricts routing Claude subscription credentials through other services. See [Authentication and credential use](https://code.claude.com/docs/en/legal-and-compliance) and confirm your setup with Anthropic.
-- **Early software.** It has one admin account, policy changes need a restart, and it has not had a security review.
+- **Early software.** Every admin has the same access, policy changes need a restart, and it has not had a security review.
 
 ## Development
 
