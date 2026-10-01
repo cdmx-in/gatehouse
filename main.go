@@ -334,9 +334,13 @@ func (s *server) events(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out)
 }
 
+func (s *server) pruneOnce(days int) {
+	s.db.Exec(`DELETE FROM events WHERE ts<?`, time.Now().Unix()-int64(days)*86400)
+}
+
 func (s *server) prune(days int) {
 	for ; ; time.Sleep(24 * time.Hour) {
-		s.db.Exec(`DELETE FROM events WHERE ts<?`, time.Now().Unix()-int64(days)*86400)
+		s.pruneOnce(days)
 	}
 }
 

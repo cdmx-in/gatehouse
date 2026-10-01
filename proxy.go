@@ -19,10 +19,9 @@ import (
 	"time"
 )
 
-const (
-	maxBody    = 64 << 20 // requests carry the whole conversation, images included
-	maxCapture = 8 << 20  // ponytail: responses past this lose token counts, not content
-)
+const maxCapture = 8 << 20 // ponytail: responses past this lose token counts, not content
+
+var maxBody = 64 << 20 // requests carry the whole conversation, images included; a var so tests can lower it
 
 type reqInfo struct{ user, session, model string }
 
@@ -125,7 +124,7 @@ func (s *server) proxy(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusUnauthorized, "authentication_error", "gatehouse: unknown or revoked member token in ANTHROPIC_BASE_URL")
 		return
 	}
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBody))
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, int64(maxBody)))
 	if err != nil {
 		apiError(w, http.StatusRequestEntityTooLarge, "invalid_request_error", "gatehouse: request body too large")
 		return
@@ -135,14 +134,16 @@ func (s *server) proxy(w http.ResponseWriter, r *http.Request) {
 
 	info := reqInfo{user: user}
 	var req msgReq
-	isMessages := strings.HasSuffix(r.URL.Path, "/v1/messages") && json.Unmarshal(body, &req) == nil
+	// Best effort: policy checks whatever parses, so count_tokens and the like get the same rules.
+	json.Unmarshal(body, &req)
+	isMessages := strings.HasSuffix(r.URL.Path, "/v1/messages")
 	if isMessages {
 		info.model = req.Model
 		info.session = first(r.Header.Get("X-Claude-Code-Session-Id"), lastMatch(uuidRe, req.Metadata.UserID))
 	}
 	if rule, tool, detail := s.policy.violation(body, &req); rule != "" {
-		// One row per violation per session, however often the client retries.
-		s.insert(Event{ID: hashID(info.session, rule, tool, detail), User: user, Session: info.session, Kind: "request",
+		// One row per violation per user and session, however often the client retries.
+		s.insert(Event{ID: hashID(user, info.session, rule, tool, detail), User: user, Session: info.session, Kind: "request",
 			Tool: tool, Decision: "block", Rule: rule, Detail: detail, Model: info.model})
 		msg := fmt.Sprintf("Blocked by company AI policy (rule %s). This conversation holds content that may not be sent to the model: use /rewind to go back before it, or /clear. %s", rule, s.policy.Contact)
 		if rule == "mcp:not-allowed" {
@@ -188,7 +189,7 @@ func (s *server) audit(info reqInfo, req *msgReq) {
 			if s.policy.LogContent {
 				detail = p
 			}
-			s.insert(Event{ID: hashID(info.session, "prompt", fmt.Sprint(n), p), User: info.user, Session: info.session,
+			s.insert(Event{ID: hashID(info.user, info.session, "prompt", fmt.Sprint(n), p), User: info.user, Session: info.session,
 				Kind: "prompt", Decision: "allow", Detail: detail, Model: info.model})
 		}
 		return
@@ -198,7 +199,7 @@ func (s *server) audit(info reqInfo, req *msgReq) {
 	}
 	for _, b := range blocks(req.Messages[n-2].Content) {
 		if b.Type == "tool_use" {
-			s.insert(Event{ID: hashID(info.session, b.ID), User: info.user, Session: info.session,
+			s.insert(Event{ID: hashID(info.user, info.session, b.ID), User: info.user, Session: info.session,
 				Kind: "tool", Tool: b.Name, Decision: "allow", Detail: b.summary(), Model: info.model})
 		}
 	}
